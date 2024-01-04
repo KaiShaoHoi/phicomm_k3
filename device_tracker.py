@@ -48,7 +48,7 @@ PLATFORM_SCHEMA = vol.All(
     }))
 
 
-_WL_CMD = "cat /proc/net/arp | awk '{if(NR>1) print $4}'"
+_WL_CMD = "wl -i eth1 assoclist;wl -i eth2 assoclist;cat /proc/net/arp | awk '{if(NR>1) print $4}'"
 
 
 

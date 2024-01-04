@@ -4,7 +4,7 @@
 
 ## 兼容性
 
-此插件专为使用[此链接](http://www.right.com.cn/forum/thread-259012-1-1.html)提供的固件刷写的Phicomm K3路由器而设计。如果您之前刷写了Merlin固件，则建议在安装此插件之前先刷写LEDE。直接刷写官方root固件可能会导致分区格式错误。
+此插件专为使用[此链接](https://tbvv.net/posts/0101-k3)提供的固件刷写的Phicomm K3路由器而设计。如果您之前刷写了Merlin固件，则建议在安装此插件之前先刷写LEDE。直接刷写官方root固件可能会导致分区格式错误。
 
 ## 安装
 
@@ -52,7 +52,7 @@ device_tracker:
 插件通过SSH连接到路由器并执行以下命令以检索关联设备列表：
 
 ```bash
-wl -i eth1 assoclist; wl -i eth2 assoclist
+wl -i eth1 assoclist;wl -i eth2 assoclist;cat /proc/net/arp | awk '{if(NR>1) print $4}'
 ```
 
 然后，插件返回在线设备的MAC地址。
