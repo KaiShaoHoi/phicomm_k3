@@ -14,7 +14,7 @@
 2. 将解压后的文件夹复制到Home Assistant的custom components目录下：
 
     ```
-    .homeassistant/custom_components/device_tracker
+    .homeassistant/custom_components/phicomm_k3
     ```
 
 3. 通常情况下，所需的依赖项会自动安装。如果没有，请使用以下命令手动安装：
@@ -23,6 +23,7 @@
     sudo su -s /bin/bash homeassistant
     source /srv/homeassistant/bin/activate
     pip3 install paramiko -i http://pypi.douban.com/simple --trusted-host pypi.douban.com
+    pip install pexpect
     ```
 
 4. 如果在paramiko安装过程中遇到错误，请退出虚拟环境并安装所需的依赖项：
