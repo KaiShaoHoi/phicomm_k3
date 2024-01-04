@@ -1,6 +1,7 @@
 # Phicomm K3 Home Assistant设备追踪插件
 
 这个Home Assistant自定义组件允许您通过SSH追踪连接到Phicomm K3路由器的设备。
+
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 
 ## 兼容性
