@@ -1,0 +1,11 @@
+{
+  "domain": "phicomm_k3",
+  "name": "phicomm_k3",
+  "documentation": "",
+  "requirements": [],
+  "dependencies": [],
+  "codeowners": [
+    "@chaobt"
+  ],
+  "version": "1.0.0"
+}
