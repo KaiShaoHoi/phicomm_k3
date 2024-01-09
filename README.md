@@ -10,7 +10,17 @@
 
 ## 安装
 
-1. 下载并解压文件。
+### 通过HACS安装（推荐）
+
+1. 打开Home Assistant的HACS（Home Assistant Community Store）插件。
+2. 进入“集成”页面，点击右上角的三个点，选择“仓库”。
+3. 在“仓库URL”中添加：`https://github.com/KaiShaoHoi/phicomm_k3`。
+4. 点击“添加”，然后在搜索框中搜索插件：`phicomm_k3`。
+5. 点击搜索结果中的插件，然后点击“安装”。
+
+### 手动安装
+
+1. 下载插件文件并解压。
 2. 将解压后的文件夹复制到Home Assistant的custom components目录下：
 
     ```
