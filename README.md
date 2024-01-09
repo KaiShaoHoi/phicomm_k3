@@ -2,6 +2,8 @@
 
 这个Home Assistant自定义组件允许您通过SSH追踪连接到Phicomm K3路由器的设备。
 
+[![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
+
 ## 兼容性
 
 此插件专为使用[此链接](https://tbvv.net/posts/0101-k3)提供的固件刷写的Phicomm K3路由器而设计。如果您之前刷写了Merlin固件，则建议在安装此插件之前先刷写LEDE。直接刷写官方root固件可能会导致分区格式错误。
@@ -12,7 +14,7 @@
 2. 将解压后的文件夹复制到Home Assistant的custom components目录下：
 
     ```
-    .homeassistant/custom_components/device_tracker
+    .homeassistant/custom_components/phicomm_k3
     ```
 
 3. 通常情况下，所需的依赖项会自动安装。如果没有，请使用以下命令手动安装：
@@ -21,6 +23,7 @@
     sudo su -s /bin/bash homeassistant
     source /srv/homeassistant/bin/activate
     pip3 install paramiko -i http://pypi.douban.com/simple --trusted-host pypi.douban.com
+    pip install pexpect
     ```
 
 4. 如果在paramiko安装过程中遇到错误，请退出虚拟环境并安装所需的依赖项：
