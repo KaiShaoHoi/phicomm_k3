@@ -1,11 +1,12 @@
 {
   "domain": "phicomm_k3",
   "name": "phicomm_k3",
-  "documentation": "",
-  "requirements": [],
+  "documentation": "https://github.com/KaiShaoHoi/phicomm_k3/blob/main/README.md",
+  "requirements": ["pexpect==4.0.1"]
   "dependencies": [],
   "codeowners": [
     "@chaobt"
   ],
   "version": "1.0.0"
+  "iot_class": "Local Polling"
 }
