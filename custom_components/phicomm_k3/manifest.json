@@ -1,6 +1,6 @@
 {
   "domain": "phicomm_k3",
-  "name": "phicomm_k3",
+  "name": "PHICOMM K3 Router Device Tracker",
   "codeowners": ["@chaobt"],
   "config_flow": true,
   "documentation": "https://github.com/KaiShaoHoi/phicomm_k3",
