@@ -1,0 +1,20 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to your PHICOMM K3 Router",
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password",
+          "port": "Port",
+          "protocol": "Protocol"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect, please check your settings."
+    },
+    "title": "PHICOMM K3"
+  }
+}
