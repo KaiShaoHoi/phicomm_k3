@@ -1,9 +1,11 @@
 {
   "domain": "phicomm_k3",
-  "name": "phicomm_k3",
+  "name": "PHICOMM K3 Router Device Tracker",
   "codeowners": ["@chaobt"],
+  "config_flow": true,
   "documentation": "https://github.com/KaiShaoHoi/phicomm_k3",
+  "icon": "mdi:RouterWirelessSettings"
   "iot_class": "local_polling",
   "requirements": ["pexpect==4.9.0"],
-  "version": "1.0.1"
+  "version": "1.0.2"
 }
