@@ -1,6 +1,6 @@
 # Phicomm K3 Home Assistant设备追踪插件
 
-这个Home Assistant自定义组件允许您通过SSH追踪连接到Phicomm K3路由器的设备。
+这个Home Assistant自定义组件允许您通过Web API追踪连接到Phicomm K3路由器的设备。
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge)](https://github.com/hacs/integration)
 
@@ -32,14 +32,7 @@
     ```bash
     sudo su -s /bin/bash homeassistant
     source /srv/homeassistant/bin/activate
-    pip3 install paramiko -i http://pypi.douban.com/simple --trusted-host pypi.douban.com
-    pip install pexpect
-    ```
-
-4. 如果在paramiko安装过程中遇到错误，请退出虚拟环境并安装所需的依赖项：
-
-    ```bash
-    sudo apt-get install libffi-dev libssl-dev
+    pip3 install requests
     ```
 
 ## 配置
@@ -50,7 +43,6 @@
 device_tracker:
   - platform: phicomm_k3
     host: 192.168.1.1
-    protocol: ssh
     username: admin
     password: YOUR_ROUTER_PASSWORD
     interval_seconds: 3
@@ -62,18 +54,24 @@ device_tracker:
 
 ## 工作原理
 
-插件通过SSH连接到路由器并执行以下命令以检索关联设备列表：
+插件通过HTTP请求连接到路由器的Web管理界面，使用以下步骤获取设备信息：
 
-```bash
-wl -i eth1 assoclist;wl -i eth2 assoclist;cat /proc/net/arp | awk '{if(NR>1) print $4}'
-```
+1. 首先通过POST请求到 `/cgi-bin/` 端点进行身份验证，获取访问令牌(stok)
+2. 使用获取的令牌向 `/cgi-bin/stok={token}/data` 端点发送请求，获取客户端设备列表
+3. 解析返回的JSON数据，提取在线设备的MAC地址和设备名称
 
-然后，插件返回在线设备的MAC地址。
+插件现在能够直接从路由器的Web API获取设备名称，无需手动配置。
+
+## 功能特性
+
+- **自动设备名称识别**：插件现在可以直接从路由器的Web API获取设备的真实名称，无需手动在`known_devices.yaml`中配置
+- **实时状态更新**：通过Web API实时获取设备在线状态
+- **简化配置**：不再需要SSH连接，只需提供Web管理界面的用户名和密码
 
 ## 已知问题
 
-1. 插件目前没有通过SSH高效获取设备名称的方法。因此，device_tracker返回的名称是不带冒号的MAC地址。您可以在`known_devices.yaml`文件中手动设置所需的名称和图片。
+1. 当设备离开Wi-Fi网络时，device_tracker的状态从'Home'变为'Away'，延迟大约为2到3分钟。
 
-2. 当设备离开Wi-Fi网络时，device_tracker的状态从'Home'变为'Away'，延迟大约为2到3分钟。
+2. 需要确保路由器的Web管理界面可访问，并且提供的用户名和密码正确。
 
-如果您对上述问题有解决方案，请随时提出问题。
+如果您遇到任何问题或有改进建议，请随时提出issue。
