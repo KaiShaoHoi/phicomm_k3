@@ -4,232 +4,195 @@ For more details about this platform, please refer to the documentation at
 https://home-assistant.io/components/device_tracker.asuswrt/
 """
 import logging
-import re
-import socket
-import telnetlib
-from collections import namedtuple
-import threading
-import voluptuous as vol
+import requests
 from datetime import timedelta
-from homeassistant.components.device_tracker import (
-    DOMAIN, PLATFORM_SCHEMA, DeviceScanner)
-from homeassistant.const import (
-    CONF_HOST, CONF_PASSWORD, CONF_USERNAME, CONF_PORT)
+import time
+import voluptuous as vol
+from urllib.parse import unquote
+from homeassistant.components.device_tracker import (DOMAIN, PLATFORM_SCHEMA, DeviceScanner)
+from homeassistant.const import (CONF_HOST, CONF_PASSWORD, CONF_USERNAME)
 import homeassistant.helpers.config_validation as cv
 from homeassistant.util import Throttle
 
-REQUIREMENTS = ['pexpect==4.0.1']
-
 _LOGGER = logging.getLogger(__name__)
-
-MAIN = 'phicomm_k3'
-
-CONF_PROTOCOL = 'protocol'
-CONF_PUB_KEY = 'pub_key'
-CONF_SSH_KEY = 'ssh_key'
-
-DEFAULT_SSH_PORT = 22
 
 MIN_TIME_BETWEEN_SCANS = timedelta(seconds=5)
 
-SECRET_GROUP = 'Password or SSH Key'
+# URL Constants
+LOGIN_URL = "http://{}/cgi-bin/"
+DEVICE_LIST_URL = "http://{}/cgi-bin/stok={}/data"
 
-PLATFORM_SCHEMA = vol.All(
-    cv.has_at_least_one_key(CONF_PASSWORD, CONF_PUB_KEY, CONF_SSH_KEY),
-    PLATFORM_SCHEMA.extend({
-        vol.Required(CONF_HOST): cv.string,
-        vol.Required(CONF_USERNAME): cv.string,
-        vol.Optional(CONF_PROTOCOL, default='ssh'):
-            vol.In(['ssh', 'telnet']),
-        vol.Optional(CONF_PORT, default=DEFAULT_SSH_PORT): cv.port,
-        vol.Exclusive(CONF_PASSWORD, SECRET_GROUP): cv.string,
-        vol.Exclusive(CONF_SSH_KEY, SECRET_GROUP): cv.isfile,
-        vol.Exclusive(CONF_PUB_KEY, SECRET_GROUP): cv.isfile
-    }))
+# Schema
+PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
+    vol.Required(CONF_HOST): cv.string,
+    vol.Required(CONF_USERNAME): cv.string,
+    vol.Required(CONF_PASSWORD): cv.string,
+})
 
-
-_WL_CMD = "wl -i eth1 assoclist;wl -i eth2 assoclist;cat /proc/net/arp | awk '{if(NR>1) print $4}'"
-
-
-
-# pylint: disable=unused-argument
-def get_scanner(hass, config):
-    """Validate the configuration and return an ASUS-WRT scanner."""
+def get_scanner(_hass, config):
+    """Validate the configuration and return a Phicomm K3 scanner."""
     scanner = PhicommDeviceScanner(config[DOMAIN])
-
     return scanner if scanner.success_init else None
 
-
-
 class PhicommDeviceScanner(DeviceScanner):
-    """This class queries a router running ASUSWRT firmware."""
-
-    # Eighth attribute needed for mode (AP mode vs router mode)
+    """This class queries a Phicomm K3 router."""
+    
     def __init__(self, config):
         """Initialize the scanner."""
         self.host = config[CONF_HOST]
         self.username = config[CONF_USERNAME]
-        self.password = config.get(CONF_PASSWORD, '')
-        self.ssh_key = config.get('ssh_key', config.get('pub_key', ''))
-        self.protocol = config[CONF_PROTOCOL]
-        self.port = config[CONF_PORT]
+        self.password = config[CONF_PASSWORD]
+        self.token = None
+        self._last_error_code = None  # remember last error code to avoid log spam
+        self._last_error_log_time = None  # monotonic seconds
+        self.success_init = self._login(initial=True)
 
-        if self.protocol == 'ssh':
-            if not (self.ssh_key or self.password):
-                _LOGGER.error("No password or private key specified")
-                self.success_init = False
-                return
+    def _should_log_error(self, error_code):
+        """Return True if we should log this error code now (avoid spamming)."""
+        now = time.monotonic()
+        if (
+            error_code != self._last_error_code or
+            self._last_error_log_time is None or
+            (now - self._last_error_log_time) > 300
+        ):
+            self._last_error_code = error_code
+            self._last_error_log_time = now
+            return True
+        return False
 
-            self.connection = SshConnection(self.host, self.port,
-                                            self.username,
-                                            self.password,
-                                            self.ssh_key)
-        else:
-            if not self.password:
-                _LOGGER.error("No password specified")
-                self.success_init = False
-                return
+    def _login(self, initial: bool = False):
+        """Login to the router to obtain a token.
 
-            self.connection = TelnetConnection(self.host, self.port,
-                                               self.username,
-                                               self.password)
+        Returns True on success, False otherwise.
+        When initial=True we log more explicit errors.
+        """
+        login_data = {
+            "method": "set",
+            "module": {"security": {"login": {"username": self.username, "password": self.password}}},
+            "_deviceType": "pc"
+        }
+        try:
+            response = requests.post(LOGIN_URL.format(self.host), json=login_data)
+            response.raise_for_status()
+            data = response.json()
+            if not self._validate_login_response(data):
+                return False
+            self.token = data["module"]["security"]["login"]["stok"]
+            if initial:
+                _LOGGER.debug("Obtained stok token successfully")
+            return True
+        except requests.exceptions.RequestException as err:
+            # network related
+            if initial or self._should_log_error("login_network"):
+                _LOGGER.error("Error logging in to the router: %s", err)
+            return False
 
-        self.lock = threading.Lock()
+    def _validate_login_response(self, data):
+        """Validate login JSON and log errors appropriately."""
+        # error_code present & non-zero
+        if data.get("error_code") not in (None, 0):
+            code = data["error_code"]
+            if self._should_log_error(code):
+                if code == -10401:
+                    _LOGGER.error("Login failed (error_code -10401). Check username/password or firmware compatibility.")
+                else:
+                    _LOGGER.error("Login failed with error_code %s: %s", code, data)
+            return False
+        # structure
+        try:
+            _ = data["module"]["security"]["login"]["stok"]
+            return True
+        except (KeyError, TypeError):
+            if self._should_log_error("login_format"):
+                _LOGGER.error("Unexpected login response format: %s", data)
+            return False
 
-        self.last_results = {}
-
-        # Test the router is accessible.
-        data = self.connection.get_result()
-        self.success_init = data is not None
-
+    @Throttle(MIN_TIME_BETWEEN_SCANS)
     def scan_devices(self):
         """Scan for new devices and return a list with found device IDs."""
-        self._update_info()
-        return self.last_results
+        devices = self._get_device_list()
+        return list(devices.keys())
+
+    def _get_device_list(self):
+        """Get the list of connected devices."""
+        if not self.token:
+            _LOGGER.error("Not logged in to the router")
+            return {}
+        
+        device_list_data = {
+            "method": "get",
+            "module": {"device_manage": {"client_list": None}},
+            "_deviceType": "pc"
+        }
+        try:
+            data = self._fetch_device_list(device_list_data)
+            if not data:
+                return {}
+            clients = self._extract_clients(data)
+            if clients is None:
+                return {}
+            return {
+                unquote(device["mac"]): {
+                    'host': unquote(device.get("name", "Unknown")),
+                    'status': 'IN_ASSOCLIST',
+                    'mac': unquote(device["mac"])
+                }
+                for device in clients if device.get("online_status") == 1 and device.get("mac")
+            }
+        except requests.exceptions.RequestException as err:
+            _LOGGER.error("Error retrieving device list from the router: %s", err)
+            return {}
+
+    def _fetch_device_list(self, payload):
+        """Fetch raw device list JSON; handle token expiry and single retry."""
+        data = self._post_for_data(payload)
+        if data is None:
+            return None
+        code = data.get("error_code")
+        if code in (None, 0):
+            return data
+        if code == -10401:
+            return self._handle_token_expired(payload)
+        # other error codes
+        if self._should_log_error(code):
+            _LOGGER.error("Device list request failed with error_code %s: %s", code, data)
+        return None
+
+    def _post_for_data(self, payload):
+        url = DEVICE_LIST_URL.format(self.host, self.token)
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        try:
+            return response.json()
+        except ValueError:
+            if self._should_log_error("device_list_json"):
+                _LOGGER.error("Non-JSON response retrieving device list")
+            return None
+
+    def _handle_token_expired(self, payload):
+        if self._should_log_error(-10401):
+            _LOGGER.warning("Token invalid or expired (error_code -10401). Attempting re-login.")
+        if not self._login():
+            return None
+        data_retry = self._post_for_data(payload)
+        if not data_retry:
+            return None
+        retry_code = data_retry.get("error_code")
+        if retry_code not in (None, 0):
+            if self._should_log_error(retry_code):
+                _LOGGER.error("Retry device list failed with error_code %s: %s", retry_code, data_retry)
+            return None
+        return data_retry
+
+    def _extract_clients(self, data):
+        """Extract client list array from response or log format error."""
+        try:
+            return data["module"]["device_manage"]["client_list"]
+        except (KeyError, TypeError):
+            if self._should_log_error("device_list_format"):
+                _LOGGER.error("Unexpected device list response format: %s", data)
+            return None
 
     def get_device_name(self, device):
         """Return the name of the given device or None if we don't know."""
-        return None
-
-
-    def _update_info(self):
-        """Ensure the information from the ASUSWRT router is up to date.
-        Return boolean if scanning successful.
-        """
-        if not self.success_init:
-            return False
-
-        with self.lock:
-            _LOGGER.info('Checking Devices')
-            data = self.connection.get_result()
-            if not data:
-                return False
-
-            self.last_results = []
-
-            for key in data:
-                if data[key]['status'] == 'IN_ASSOCLIST':
-                    self.last_results.append(key)
-            return True
-
-class _Connection:
-    def __init__(self):
-        self._connected = False
-
-    @property
-    def connected(self):
-        """Return connection state."""
-        return self._connected
-
-    def connect(self):
-        """Mark currenct connection state as connected."""
-        self._connected = True
-
-    def disconnect(self):
-        """Mark current connection state as disconnected."""
-        self._connected = False
-
-
-class SshConnection(_Connection):
-    """Maintains an SSH connection to an ASUS-WRT router."""
-
-    def __init__(self, host, port, username, password, ssh_key):
-        """Initialize the SSH connection properties."""
-        super(SshConnection, self).__init__()
-
-        self._ssh = None
-        self._host = host
-        self._port = port
-        self._username = username
-        self._password = password
-        self._ssh_key = ssh_key
-
-
-
-    def get_result(self):
-        """Retrieve a single PhicommResult through an SSH connection.
-        Connect to the SSH server if not currently connected, otherwise
-        use the existing connection.
-        """
-        from pexpect import pxssh, exceptions
-
-
-
-        try:
-            if not self.connected:
-                self.connect()
-            neighbors = []
-            neighbors_list = []
-            self._ssh.sendline(_WL_CMD)
-            self._ssh.prompt()
-            neighbors_list = str(self._ssh.before,encoding = 'utf8').split('\n')[:-1]
-            for i in neighbors_list:
-                neighbors.append(i.replace('assoclist ','').replace('\n','').replace('\r',''))
-            devices = {}
-            for i in range(len(neighbors)):
-                devices[neighbors[i]] = {
-                    'host': 'phicomm_k3_device'+str(i),
-                    'status': 'IN_ASSOCLIST',
-                    'mac':neighbors[i],
-                }
-            return devices
-        except exceptions.EOF as err:
-            _LOGGER.error("Connection refused. SSH enabled?")
-            self.disconnect()
-            return None
-        except pxssh.ExceptionPxssh as err:
-            _LOGGER.error("Unexpected SSH error: %s", str(err))
-            self.disconnect()
-            return None
-        except AssertionError as err:
-            _LOGGER.error("Connection to router unavailable: %s", str(err))
-            self.disconnect()
-            return None
-
-
-
-
-    def connect(self):
-        """Connect to the ASUS-WRT SSH server."""
-        from pexpect import pxssh
-        self._ssh = pxssh.pxssh()
-        if self._ssh_key:
-            self._ssh.login(self._host, self._username,
-                            ssh_key=self._ssh_key, port=self._port)
-        else:
-            self._ssh.login(self._host, self._username,
-                            password=self._password, port=self._port)
-
-        super(SshConnection, self).connect()
-
-    def disconnect(self):   \
-            # pylint: disable=broad-except
-        """Disconnect the current SSH connection."""
-        try:
-            self._ssh.logout()
-        except Exception:
-            pass
-        finally:
-            self._ssh = None
-
-        super(SshConnection, self).disconnect()
+        return self._get_device_list().get(device, {}).get('host')
